@@ -79,13 +79,11 @@ This is a foundational personal project focused on handling messy real‑world d
 ```bash
 git clone https://github.com/<your-username>/Data-Cleaning-and-Sorting-Bot.git
 cd Data-Cleaning-and-Sorting-Bot
-'''
 
 Create and activate a virtual environment
 
-'''bash
 python -m venv venv
-'''
+
 
 Activate it:
 
