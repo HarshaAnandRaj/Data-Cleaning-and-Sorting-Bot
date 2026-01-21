@@ -1,0 +1,53 @@
+# Input & Output
+input_path: "raw/data.xlsx"    # Can be .csv or .xlsx
+output_path: "clean/data_clean.csv"  # Output will always be CSV
+
+# Basic schema and types
+dtypes:
+  "age": "int"
+  "price": "float"
+  "created_at": "datetime"
+  "category": "category"
+  "label": "category"
+
+# Missing value handling
+missing:
+  drop_rows_if_missing_any_of: ["label"]
+  fill:
+    "age": "median"
+    "price": "mean"
+    "category": "mode"
+
+# Normalization
+text_cleaning:
+  lower_columns: ["category"]
+  strip_spaces_columns: ["name", "category"]
+  remove_chars:
+    columns: ["name"]
+    pattern: "[^a-zA-Z0-9 ]"
+
+# Duplicates
+duplicates:
+  subset: ["id"]
+  keep: "first"
+
+# Outliers (example)
+outliers:
+  zscore:
+    columns: ["price"]
+    threshold: 3.0
+
+# Sorting
+sort:
+  by: ["created_at", "id"]
+  ascending: [true, true]
+
+# Train/val/test split
+split:
+  enabled: true
+  target_column: "label"
+  stratify: true
+  train_size: 0.7
+  val_size: 0.15
+  test_size: 0.15
+  output_dir: "clean/splits"
