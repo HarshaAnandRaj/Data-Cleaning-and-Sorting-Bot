@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -7,22 +8,19 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from sklearn.model_selection import train_test_split
 
-app = FastAPI(title="CSV/Excel Cleaning Bot")
+app = FastAPI(title="CSV & Excel Cleaning Bot")
+
+# ---------- Cleaner Class ----------
 
 class CSVCleaner:
-    def __init__(self, config_path: str):
-        with open(config_path, "r") as f:
-            self.cfg = yaml.safe_load(f)
-
-    def load(self) -> pd.DataFrame:
-        input_path = self.cfg["input_path"]
-        if input_path.endswith(".csv"):
-            df = pd.read_csv(input_path)
-        elif input_path.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(input_path)
+    def __init__(self, config_path: str = None, config_dict: dict = None):
+        if config_dict:
+            self.cfg = config_dict
+        elif config_path:
+            with open(config_path, "r") as f:
+                self.cfg = yaml.safe_load(f)
         else:
-            raise ValueError("Unsupported input file type")
-        return df
+            self.cfg = {}
 
     def apply_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
         dtypes = self.cfg.get("dtypes", {})
@@ -122,123 +120,271 @@ class CSVCleaner:
         val_size = scfg.get("val_size", 0.15)
         test_size = scfg.get("test_size", 0.15)
         temp_size = val_size + test_size
-        df_train, df_temp = train_test_split(df, test_size=temp_size, stratify=stratify, random_state=42)
+        df_train, df_temp = train_test_split(
+            df, test_size=temp_size, stratify=stratify, random_state=42
+        )
         relative_val_size = val_size / temp_size
         stratify_temp = df_temp[target] if stratify is not None else None
-        df_val, df_test = train_test_split(df_temp, test_size=(1 - relative_val_size), stratify=stratify_temp, random_state=42)
+        df_val, df_test = train_test_split(
+            df_temp, test_size=(1 - relative_val_size), stratify=stratify_temp, random_state=42
+        )
         out_dir = Path(scfg.get("output_dir", "splits"))
         out_dir.mkdir(parents=True, exist_ok=True)
         df_train.to_csv(out_dir / "train.csv", index=False)
         df_val.to_csv(out_dir / "val.csv", index=False)
         df_test.to_csv(out_dir / "test.csv", index=False)
 
-    def run(self):
-        df = self.load()
+    def is_dirty(self, df: pd.DataFrame) -> tuple[bool, list]:
+        dirty = False
+        messages = []
+        missing_cols = df.columns[df.isna().any()].tolist()
+        if missing_cols:
+            dirty = True
+            messages.append(f"Missing values in: {missing_cols}")
+        dup_count = df.duplicated().sum()
+        if dup_count > 0:
+            dirty = True
+            messages.append(f"{dup_count} duplicate rows detected")
+        return dirty, messages
+
+    def run(self, df: pd.DataFrame = None):
+        if df is None:
+            df = self.load()
         df = self.apply_dtypes(df)
         df = self.handle_missing(df)
         df = self.text_clean(df)
         df = self.drop_duplicates(df)
         df = self.handle_outliers(df)
         df = self.sort(df)
-        Path(self.cfg["output_path"]).parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(self.cfg["output_path"], index=False)
         self.split(df)
+        dirty, messages = self.is_dirty(df)
+        return df, dirty, messages
 
 
-# ---------- Helper for generating basic config ----------
-def suggest_basic_config(df: pd.DataFrame) -> dict:
-    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    object_cols = df.select_dtypes(include=["object"]).columns.tolist()
-    cfg: dict = {
-        "input_path": "__in_memory__",
-        "output_path": "__in_memory__",
-        "dtypes": {},
-        "missing": {"drop_rows_if_missing_any_of": [], "fill": {}},
-        "text_cleaning": {"lower_columns": object_cols, "strip_spaces_columns": object_cols, "remove_chars": {"columns": [], "pattern": None}},
-        "duplicates": {"subset": None, "keep": "first"},
-        "outliers": {"zscore": {"columns": numeric_cols, "threshold": 3.0}},
-        "sort": {"by": [], "ascending": True},
-        "split": {"enabled": False},
-    }
-    for col in numeric_cols:
-        cfg["dtypes"][col] = "float"
-        cfg["missing"]["fill"][col] = "mean"
-    for col in object_cols:
-        cfg["dtypes"][col] = "category"
-    return cfg
-
-
-# ---------- API endpoints ----------
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head><title>CSV/Excel Cleaning Bot</title></head>
-    <body>
-    <h2>Upload CSV or Excel for Cleaning</h2>
-    <form id="upload-form">
-    <input type="file" id="file-input" accept=".csv,.xls,.xlsx"/>
-    <button type="submit">Upload & Suggest Config</button>
-    </form>
-    <div id="chat"></div>
-    <textarea id="config-area"></textarea>
-    <button id="run-btn">Run Cleaning</button>
-    <script>
-    // ... (same JS as before, no need to change for upload types)
-    </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(html)
-
+# ---------- In-memory sessions ----------
 
 SESSIONS: dict[str, pd.DataFrame] = {}
 
 
+# ---------- HTML UI with chat, config editor, dirty message ----------
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>CSV Cleaning Bot</title>
+<style>
+body { font-family: sans-serif; margin: 20px; }
+#chat { border: 1px solid #ccc; padding: 10px; height: 250px; overflow-y: auto; }
+.msg-user { color: blue; }
+.msg-bot { color: green; }
+#config-area { width: 100%; height: 180px; }
+#dirty-msg { color: red; font-weight: bold; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<h2>CSV Cleaning & Sorting Bot</h2>
+<div id="dirty-msg" style="display:none;">
+⚠️ Your dataset looks dirty. This tool will help clean it. Verify cleaning rules before running.
+</div>
+
+<h3>1. Upload CSV</h3>
+<form id="upload-form">
+<input type="file" id="file-input" accept=".csv" required />
+<button type="submit">Upload & Suggest Config</button>
+</form>
+<p id="upload-status"></p>
+
+<h3>2. Chat about cleaning rules</h3>
+<div id="chat"></div>
+<input type="text" id="chat-input" placeholder="Ask e.g. 'Sort by date, drop rows with missing label'"/>
+<button id="send-btn">Send</button>
+
+<h3>3. Config (you can edit manually)</h3>
+<textarea id="config-area"></textarea><br/>
+<button id="run-btn">Run Cleaning</button>
+<p id="run-status"></p>
+
+<script>
+let currentConfig = null;
+let sessionId = null;
+
+function appendMessage(sender,text){
+  const chat=document.getElementById("chat");
+  const div=document.createElement("div");
+  div.className=sender==="user"?"msg-user":"msg-bot";
+  div.textContent=sender+": "+text;
+  chat.appendChild(div);
+  chat.scrollTop=chat.scrollHeight;
+}
+
+document.getElementById("upload-form").addEventListener("submit", async function(e){
+  e.preventDefault();
+  const fileInput=document.getElementById("file-input");
+  if(!fileInput.files.length) return;
+
+  const formData=new FormData();
+  formData.append("file",fileInput.files[0]);
+
+  document.getElementById("upload-status").textContent="Uploading...";
+  const res=await fetch("/upload_csv",{method:"POST",body:formData});
+  const data=await res.json();
+  if(res.ok){
+    sessionId=data.session_id;
+    currentConfig=data.config;
+    document.getElementById("config-area").value=JSON.stringify(currentConfig,null,2);
+    document.getElementById("upload-status").textContent="Uploaded. Basic config suggested.";
+
+    if(data.is_dirty){
+      document.getElementById("dirty-msg").style.display="block";
+    } else {
+      document.getElementById("dirty-msg").style.display="none";
+    }
+
+    appendMessage("bot","Basic cleaning config suggested. You can tweak via chat or JSON.");
+  } else {
+    document.getElementById("upload-status").textContent="Error: "+data.detail;
+  }
+});
+
+document.getElementById("send-btn").addEventListener("click", async function(){
+  const input=document.getElementById("chat-input");
+  const text=input.value.trim();
+  if(!text||!sessionId) return;
+  appendMessage("user",text);
+  input.value="";
+
+  const res=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:sessionId,message:text,config:currentConfig})});
+  const data=await res.json();
+  if(res.ok){
+    appendMessage("bot",data.reply);
+    currentConfig=data.config;
+    document.getElementById("config-area").value=JSON.stringify(currentConfig,null,2);
+  }else{
+    appendMessage("bot","Error: "+data.detail);
+  }
+});
+
+document.getElementById("run-btn").addEventListener("click", async function(){
+  if(!sessionId){
+    document.getElementById("run-status").textContent="Upload a CSV first.";
+    return;
+  }
+  let cfgText=document.getElementById("config-area").value;
+  try{currentConfig=JSON.parse(cfgText);}catch(e){document.getElementById("run-status").textContent="Config is not valid JSON.";return;}
+  document.getElementById("run-status").textContent="Running cleaning...";
+  const res=await fetch("/run_cleaning",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:sessionId,config:currentConfig})});
+  if(res.ok){
+    const blob=await res.blob();
+    const url=window.URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="cleaned.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    document.getElementById("run-status").textContent="Cleaning finished. File downloaded.";
+  }else{
+    const data=await res.json();
+    document.getElementById("run-status").textContent="Error: "+data.detail;
+  }
+});
+</script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
+
+
+# ---------- API Endpoints ----------
+
 @app.post("/upload_csv")
 async def upload_csv(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith((".csv", ".xls", ".xlsx")):
-        return JSONResponse(status_code=400, content={"detail": "Only CSV or Excel files are supported."})
+    if not file.filename.lower().endswith(".csv"):
+        return JSONResponse(status_code=400, content={"detail":"Only .csv files supported."})
+
     contents = await file.read()
     try:
-        if file.filename.lower().endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(contents))
-        else:
-            df = pd.read_excel(io.BytesIO(contents))
+        df = pd.read_csv(io.BytesIO(contents))
     except Exception as e:
-        return JSONResponse(status_code=400, content={"detail": f"Could not read file: {e}"})
-    session_id = f"sess_{len(SESSIONS) + 1}"
+        return JSONResponse(status_code=400, content={"detail":f"Could not read CSV: {e}"})
+
+    session_id = f"sess_{len(SESSIONS)+1}"
     SESSIONS[session_id] = df
-    cfg = suggest_basic_config(df)
-    return {"session_id": session_id, "config": cfg}
+
+    cleaner = CSVCleaner()
+    is_dirty, messages = cleaner.is_dirty(df)
+
+    # Suggest basic config for now
+    config = {
+        "dtypes": {col:"float" if pd.api.types.is_numeric_dtype(df[col]) else "category" for col in df.columns},
+        "missing":{"drop_rows_if_missing_any_of":[],"fill":{}},
+        "text_cleaning":{"lower_columns":[],"strip_spaces_columns":[],"remove_chars":{"columns":[],"pattern":None}},
+        "duplicates":{"subset":None,"keep":"first"},
+        "outliers":{"zscore":{"columns":[col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])],"threshold":3.0}},
+        "sort":{"by":[],"ascending":True},
+        "split":{"enabled":False}
+    }
+
+    return {"session_id":session_id,"config":config,"is_dirty":is_dirty,"messages":messages}
+
+
+@app.post("/chat")
+async def chat(payload: dict):
+    session_id = payload.get("session_id")
+    message = payload.get("message","")
+    config = payload.get("config",{})
+
+    if session_id not in SESSIONS:
+        return JSONResponse(status_code=400,content={"detail":"Unknown session_id."})
+
+    msg_lower = message.lower()
+    if "drop rows" in msg_lower and "missing" in msg_lower:
+        parts=message.strip().split()
+        col=parts[-1]
+        config.setdefault("missing",{}).setdefault("drop_rows_if_missing_any_of",[])
+        if col not in config["missing"]["drop_rows_if_missing_any_of"]:
+            config["missing"]["drop_rows_if_missing_any_of"].append(col)
+
+    if "sort by" in msg_lower:
+        try:
+            after_sort=message.lower().split("sort by",1)[1].strip()
+            words=after_sort.split()
+            col=words[0].strip(",.")
+            config.setdefault("sort",{})
+            config["sort"]["by"]=[col]
+            config["sort"]["ascending"]="desc" not in msg_lower and "descending" not in msg_lower
+        except: pass
+
+    reply="Updated config based on your message."
+    return {"reply":reply,"config":config}
 
 
 @app.post("/run_cleaning")
 async def run_cleaning(payload: dict):
     session_id = payload.get("session_id")
-    config = payload.get("config", {})
+    config = payload.get("config",{})
+
     if session_id not in SESSIONS:
-        return JSONResponse(status_code=400, content={"detail": "Unknown session_id."})
+        return JSONResponse(status_code=400,content={"detail":"Unknown session_id"})
+
     df = SESSIONS[session_id]
-    cleaner_cfg = config.copy()
-    cleaner_cfg["input_path"] = "__in_memory__"
-    cleaner_cfg["output_path"] = "__in_memory__"
-    cleaner = CSVCleaner.__new__(CSVCleaner)
-    cleaner.cfg = cleaner_cfg
-    df_clean = df.copy()
-    df_clean = cleaner.apply_dtypes(df_clean)
-    df_clean = cleaner.handle_missing(df_clean)
-    df_clean = cleaner.text_clean(df_clean)
-    df_clean = cleaner.drop_duplicates(df_clean)
-    df_clean = cleaner.handle_outliers(df_clean)
-    df_clean = cleaner.sort(df_clean)
+    cleaner = CSVCleaner(config_dict=config)
+    df_clean, dirty, messages = cleaner.run(df)
+
     buf = io.StringIO()
-    df_clean.to_csv(buf, index=False)
+    df_clean.to_csv(buf,index=False)
     buf.seek(0)
-    return StreamingResponse(buf, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=cleaned.csv"})
+    headers = {"Content-Disposition":"attachment; filename=cleaned.csv"}
+    if dirty:
+        headers["X-Dataset-Dirty"] = "; ".join(messages)
+
+    return StreamingResponse(buf,media_type="text/csv",headers=headers)
 
 
-if __name__ == "__main__":
+# ---------- Run server ----------
+if __name__=="__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
