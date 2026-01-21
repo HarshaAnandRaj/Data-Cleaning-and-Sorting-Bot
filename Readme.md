@@ -211,15 +211,5 @@ You can manually edit any field:
 * Improved natural‑language understanding in chat
 * Automatic outlier detection
 
-```
 
----
 
-### 📌 What Changed from Your Current README
-
-✔️ Lists now correctly render with spacing  
-✔️ Code blocks only where appropriate (`bash` / `python`)  
-✔️ Sections clearly separated  
-✔️ Emojis added for structure & readability 💡 :contentReference[oaicite:1]{index=1}
-
----
