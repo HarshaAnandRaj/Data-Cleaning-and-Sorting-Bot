@@ -181,6 +181,7 @@ You can manually edit any field:
 
 ### 🔹 v0.1 Alpha
 
+<<<<<<< HEAD
 * CLI-style cleaner
 * Config-based CSV loading
 * Data type application
@@ -189,3 +190,35 @@ You can manually edit any field:
 * Outlier handling via Z-score
 * Sorting & optional splitting
 * No web UI, chat, or session management
+=======
+  * Handles commands like “drop rows…”, “sort by…”
+* Refactored `CSVCleaner`
+
+  * Accepts either config path or dict
+  * Returns `(df_clean, dirty, messages)`
+* Improved UI messaging & workflow
+
+### 🔸 v0.1 Alpha
+
+* Initial CLI style cleaner:
+
+  * Config‑based CSV loading
+  * Data type application
+  * Missing value handling
+  * Text cleaning & duplicates removal
+  * Z‑score outliers
+  * Sorting & optional splitting
+* No web UI, chat, etc.
+
+---
+
+## 🔮 Future Ideas (v0.3+)
+
+* Export a **readable `.txt` report** summarizing changes
+* Support **Excel uploads** (`.xlsx`)
+* Improved natural‑language understanding in chat
+* Automatic outlier detection
+
+
+
+>>>>>>> c8cf177a041bf7113c2ffa5d93d906b6a7467c27
