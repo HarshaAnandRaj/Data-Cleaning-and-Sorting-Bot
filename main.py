@@ -1,17 +1,16 @@
 import io
 import json
 from pathlib import Path
-
+import zipfile
 import pandas as pd
 import yaml
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from sklearn.model_selection import train_test_split
 
-app = FastAPI(title="CSV & Excel Cleaning Bot")
+app = FastAPI(title="CSV & Excel Cleaning Bot – V0.3")
 
 # ---------- Cleaner Class ----------
-
 class CSVCleaner:
     def __init__(self, config_path: str = None, config_dict: dict = None):
         if config_dict:
@@ -134,82 +133,98 @@ class CSVCleaner:
         df_val.to_csv(out_dir / "val.csv", index=False)
         df_test.to_csv(out_dir / "test.csv", index=False)
 
-    def is_dirty(self, df: pd.DataFrame) -> tuple[bool, list]:
-        dirty = False
+    def is_dirty(self, df: pd.DataFrame) -> tuple[float, str, list]:
         messages = []
-        missing_cols = df.columns[df.isna().any()].tolist()
-        if missing_cols:
-            dirty = True
-            messages.append(f"Missing values in: {missing_cols}")
+        missing_count = df.isna().sum().sum()
         dup_count = df.duplicated().sum()
+        total_cells = df.shape[0] * df.shape[1]
+        dirty_score = round((missing_count + dup_count) / total_cells * 100, 2) if total_cells else 0.0
+
+        if missing_count > 0:
+            messages.append(f"Missing values: {missing_count}")
         if dup_count > 0:
-            dirty = True
-            messages.append(f"{dup_count} duplicate rows detected")
-        return dirty, messages
+            messages.append(f"Duplicate rows: {dup_count}")
+
+        if dirty_score == 0:
+            severity = "INFO"
+        elif dirty_score < 5:
+            severity = "LOW"
+        elif dirty_score < 20:
+            severity = "MEDIUM"
+        else:
+            severity = "HIGH"
+
+        return dirty_score, severity, messages
 
     def run(self, df: pd.DataFrame = None):
         if df is None:
-            df = self.load()
-        df = self.apply_dtypes(df)
-        df = self.handle_missing(df)
-        df = self.text_clean(df)
-        df = self.drop_duplicates(df)
-        df = self.handle_outliers(df)
-        df = self.sort(df)
-        self.split(df)
-        dirty, messages = self.is_dirty(df)
-        return df, dirty, messages
+            raise ValueError("DataFrame is required")
+        df_dirty_score, _, _ = self.is_dirty(df)
+        df_clean = self.apply_dtypes(df)
+        df_clean = self.handle_missing(df_clean)
+        df_clean = self.text_clean(df_clean)
+        df_clean = self.drop_duplicates(df_clean)
+        df_clean = self.handle_outliers(df_clean)
+        df_clean = self.sort(df_clean)
+        clean_score, severity, messages = self.is_dirty(df_clean)
+        return df_clean, df_dirty_score, clean_score, severity, messages
 
 
 # ---------- In-memory sessions ----------
-
 SESSIONS: dict[str, pd.DataFrame] = {}
 
 
-# ---------- HTML UI with chat, config editor, dirty message ----------
-
+# ---------- HTML UI ----------
 @app.get("/", response_class=HTMLResponse)
 async def root():
     html = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>CSV Cleaning Bot</title>
+<title>CSV Cleaning Bot – V0.3</title>
 <style>
 body { font-family: sans-serif; margin: 20px; }
-#chat { border: 1px solid #ccc; padding: 10px; height: 250px; overflow-y: auto; }
-.msg-user { color: blue; }
-.msg-bot { color: green; }
-#config-area { width: 100%; height: 180px; }
-#dirty-msg { color: red; font-weight: bold; margin-bottom: 10px; }
+#chat { border: 1px solid #ccc; padding: 10px; height: 240px; overflow-y: auto; }
+.msg-user { color: #2563eb; }
+.msg-bot { color: #16a34a; }
+#config-area { width: 100%; height: 180px; font-family: monospace; }
+#dirty-msg { color: #b91c1c; font-weight: bold; margin-bottom: 10px; }
+#dirty-score { font-weight: bold; margin-bottom: 10px; }
+small { color: #555; }
 </style>
 </head>
 <body>
-<h2>CSV Cleaning & Sorting Bot</h2>
-<div id="dirty-msg" style="display:none;">
-⚠️ Your dataset looks dirty. This tool will help clean it. Verify cleaning rules before running.
-</div>
 
-<h3>1. Upload CSV</h3>
+<h2>CSV / Excel Cleaning Bot <small>(V0.3 · Devnet UI)</small></h2>
+<p>This UI is <b>for internal testing only</b>. Final UI will be replaced.</p>
+
+<div id="dirty-msg" style="display:none;">
+⚠ Dataset health issues detected. Review cleaning config carefully.
+</div>
+<div id="dirty-score"></div>
+
+<h3>1. Upload Dataset</h3>
 <form id="upload-form">
-<input type="file" id="file-input" accept=".csv" required />
-<button type="submit">Upload & Suggest Config</button>
+<input type="file" id="file-input" accept=".csv,.xls,.xlsx" required />
+<button type="submit">Upload</button>
 </form>
 <p id="upload-status"></p>
 
-<h3>2. Chat about cleaning rules</h3>
+<h3>2. Chat (rule tweaks – experimental)</h3>
 <div id="chat"></div>
-<input type="text" id="chat-input" placeholder="Ask e.g. 'Sort by date, drop rows with missing label'"/>
+<input type="text" id="chat-input" placeholder="e.g. sort by date desc" />
 <button id="send-btn">Send</button>
 
-<h3>3. Config (you can edit manually)</h3>
+<h3>3. Cleaning Config (JSON)</h3>
 <textarea id="config-area"></textarea><br/>
 <button id="run-btn">Run Cleaning</button>
 <p id="run-status"></p>
 
+<p>API Docs: <a href="/docs">/docs</a></p>
+
 <script>
-let currentConfig = null;
-let sessionId = null;
+let currentConfig=null;
+let sessionId=null;
 
 function appendMessage(sender,text){
   const chat=document.getElementById("chat");
@@ -220,75 +235,63 @@ function appendMessage(sender,text){
   chat.scrollTop=chat.scrollHeight;
 }
 
-document.getElementById("upload-form").addEventListener("submit", async function(e){
+function resetUI() {
+  document.getElementById("chat").innerHTML = "";
+  document.getElementById("config-area").value = "";
+  document.getElementById("dirty-msg").style.display = "none";
+  document.getElementById("dirty-score").textContent = "";
+  document.getElementById("upload-status").textContent = "";
+  document.getElementById("run-status").textContent = "";
+  currentConfig = null;
+  sessionId = null;
+}
+
+// ---------- Upload ----------
+document.getElementById("upload-form").addEventListener("submit",async e=>{
   e.preventDefault();
-  const fileInput=document.getElementById("file-input");
-  if(!fileInput.files.length) return;
-
-  const formData=new FormData();
-  formData.append("file",fileInput.files[0]);
-
+  resetUI();
+  const file=document.getElementById("file-input").files[0];
+  if(!file) return;
+  const fd=new FormData();
+  fd.append("file",file);
   document.getElementById("upload-status").textContent="Uploading...";
-  const res=await fetch("/upload_csv",{method:"POST",body:formData});
+  const res=await fetch("/upload_csv",{method:"POST",body:fd});
   const data=await res.json();
   if(res.ok){
     sessionId=data.session_id;
     currentConfig=data.config;
     document.getElementById("config-area").value=JSON.stringify(currentConfig,null,2);
-    document.getElementById("upload-status").textContent="Uploaded. Basic config suggested.";
-
-    if(data.is_dirty){
-      document.getElementById("dirty-msg").style.display="block";
-    } else {
-      document.getElementById("dirty-msg").style.display="none";
-    }
-
-    appendMessage("bot","Basic cleaning config suggested. You can tweak via chat or JSON.");
+    if(data.severity!=="INFO") document.getElementById("dirty-msg").style.display="block";
+    if(data.dirty_score!==undefined) document.getElementById("dirty-score").textContent=`Dirty score: ${data.dirty_score}%`;
+    appendMessage("bot","Dataset uploaded. Review config and run cleaning.");
+    document.getElementById("upload-status").textContent="Upload complete.";
   } else {
-    document.getElementById("upload-status").textContent="Error: "+data.detail;
+    document.getElementById("upload-status").textContent=data.detail||"Upload failed.";
   }
 });
 
-document.getElementById("send-btn").addEventListener("click", async function(){
-  const input=document.getElementById("chat-input");
-  const text=input.value.trim();
-  if(!text||!sessionId) return;
-  appendMessage("user",text);
-  input.value="";
+// ---------- Run Cleaning ----------
+document.getElementById("run-btn").addEventListener("click",async ()=>{
+  if(!sessionId){ document.getElementById("run-status").textContent="Upload a file first."; return; }
+  let cfg={};
+  try{ cfg=JSON.parse(document.getElementById("config-area").value||"{}"); }
+  catch{ document.getElementById("run-status").textContent="Invalid JSON."; return; }
 
-  const res=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:sessionId,message:text,config:currentConfig})});
-  const data=await res.json();
-  if(res.ok){
-    appendMessage("bot",data.reply);
-    currentConfig=data.config;
-    document.getElementById("config-area").value=JSON.stringify(currentConfig,null,2);
-  }else{
-    appendMessage("bot","Error: "+data.detail);
-  }
-});
-
-document.getElementById("run-btn").addEventListener("click", async function(){
-  if(!sessionId){
-    document.getElementById("run-status").textContent="Upload a CSV first.";
-    return;
-  }
-  let cfgText=document.getElementById("config-area").value;
-  try{currentConfig=JSON.parse(cfgText);}catch(e){document.getElementById("run-status").textContent="Config is not valid JSON.";return;}
   document.getElementById("run-status").textContent="Running cleaning...";
-  const res=await fetch("/run_cleaning",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:sessionId,config:currentConfig})});
+  const res=await fetch("/run_cleaning",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:sessionId,config:cfg})});
+
   if(res.ok){
     const blob=await res.blob();
-    const url=window.URL.createObjectURL(blob);
+    const fileName=`${document.getElementById("file-input").files[0].name.split('.')[0]}_Cleaned.zip`;
     const a=document.createElement("a");
-    a.href=url;
-    a.download="cleaned.csv";
-    document.body.appendChild(a);
+    a.href=URL.createObjectURL(blob);
+    a.download=fileName;
     a.click();
-    a.remove();
     document.getElementById("run-status").textContent="Cleaning finished. File downloaded.";
-  }else{
+    resetUI();
+  } else {
     const data=await res.json();
-    document.getElementById("run-status").textContent="Error: "+data.detail;
+    document.getElementById("run-status").textContent=data.detail||"Cleaning failed.";
   }
 });
 </script>
@@ -299,25 +302,25 @@ document.getElementById("run-btn").addEventListener("click", async function(){
 
 
 # ---------- API Endpoints ----------
-
 @app.post("/upload_csv")
 async def upload_csv(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".csv"):
-        return JSONResponse(status_code=400, content={"detail":"Only .csv files supported."})
-
+    if not file.filename.lower().endswith((".csv", ".xls", ".xlsx")):
+        return JSONResponse(status_code=400, content={"detail":"Only .csv/.xls/.xlsx files supported."})
     contents = await file.read()
     try:
-        df = pd.read_csv(io.BytesIO(contents))
+        if file.filename.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents))
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
     except Exception as e:
-        return JSONResponse(status_code=400, content={"detail":f"Could not read CSV: {e}"})
+        return JSONResponse(status_code=400, content={"detail":f"Could not read file: {e}"})
 
     session_id = f"sess_{len(SESSIONS)+1}"
     SESSIONS[session_id] = df
 
     cleaner = CSVCleaner()
-    is_dirty, messages = cleaner.is_dirty(df)
+    dirty_score, severity, messages = cleaner.is_dirty(df)
 
-    # Suggest basic config for now
     config = {
         "dtypes": {col:"float" if pd.api.types.is_numeric_dtype(df[col]) else "category" for col in df.columns},
         "missing":{"drop_rows_if_missing_any_of":[],"fill":{}},
@@ -328,7 +331,7 @@ async def upload_csv(file: UploadFile = File(...)):
         "split":{"enabled":False}
     }
 
-    return {"session_id":session_id,"config":config,"is_dirty":is_dirty,"messages":messages}
+    return {"session_id":session_id,"config":config,"dirty_score":dirty_score,"severity":severity,"messages":messages}
 
 
 @app.post("/chat")
@@ -340,6 +343,7 @@ async def chat(payload: dict):
     if session_id not in SESSIONS:
         return JSONResponse(status_code=400,content={"detail":"Unknown session_id."})
 
+    # Minimal chat command parsing (V0.3)
     msg_lower = message.lower()
     if "drop rows" in msg_lower and "missing" in msg_lower:
         parts=message.strip().split()
@@ -372,16 +376,26 @@ async def run_cleaning(payload: dict):
 
     df = SESSIONS[session_id]
     cleaner = CSVCleaner(config_dict=config)
-    df_clean, dirty, messages = cleaner.run(df)
+    df_clean, dirty_score_before, dirty_score_after, severity, messages = cleaner.run(df)
 
-    buf = io.StringIO()
-    df_clean.to_csv(buf,index=False)
-    buf.seek(0)
-    headers = {"Content-Disposition":"attachment; filename=cleaned.csv"}
-    if dirty:
-        headers["X-Dataset-Dirty"] = "; ".join(messages)
+    # Create in-memory ZIP with cleaned file and issues log
+    zip_buffer = io.BytesIO()
+    uploaded_name = payload.get("filename") or f"file{session_id}"
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        cleaned_csv_name = f"{uploaded_name}_cleaned.csv"
+        issues_txt_name = f"{uploaded_name}_issuelog.txt"
+        # Cleaned CSV
+        buf = io.StringIO()
+        df_clean.to_csv(buf, index=False)
+        zf.writestr(cleaned_csv_name, buf.getvalue())
+        # Issues log
+        issues_content = f"Dirty score BEFORE cleaning: {dirty_score_before}%\nDirty score AFTER cleaning: {dirty_score_after}%\nSeverity: {severity}\nMessages:\n" + "\n".join(messages)
+        zf.writestr(issues_txt_name, issues_content)
 
-    return StreamingResponse(buf,media_type="text/csv",headers=headers)
+    zip_buffer.seek(0)
+    headers = {"Content-Disposition":f"attachment; filename={uploaded_name}_Cleaned.zip"}
+
+    return StreamingResponse(zip_buffer, media_type="application/zip", headers=headers)
 
 
 # ---------- Run server ----------

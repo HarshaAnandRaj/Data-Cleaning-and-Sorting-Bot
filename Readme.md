@@ -1,55 +1,34 @@
 
-# 🧹 CSV Cleaning & Sorting Bot (v0.2 Alpha)
 
-An interactive data cleaning tool built with **FastAPI** and **Pandas**.
-
-Users can upload CSV files, get automated cleaning suggestions, tweak rules via a simple chat or JSON config, and download a cleaned CSV. The app also detects whether the dataset looks **“dirty”** (missing values / duplicates) and warns the user before running the pipeline.
-
-This is a foundational personal project focused on handling messy real‑world data — designed to be extended into future ML, analytics, or automation pipelines.
-
----
-
-## ✨ Features (v0.2 Alpha)
-
-- **Web UI** (single HTML page served by FastAPI)
-- **File upload form**: CSV (.csv) files
-- **Chat area** to apply simple natural‑language cleaning rules
-- **JSON config editor** (auto‑filled, fully editable)
-- **Run button** to download `cleaned.csv`
-- **In‑memory sessions**
-  - Each upload gets a `session_id`
-  - Data never hits disk (in this version)
-
-### 🧩 Dirty Dataset Detection
-
-- Warns if:
-  - Any column has missing values
-  - There are duplicate rows
 - Dirty messages are:
-  - Shown in the UI
-  - Returned as an `X-Dataset-Dirty` header on download
+- Shown in the UI
+- Included in `[filename]_issuelog.txt`
+- Severity levels:
+- INFO / WARNING / CRITICAL
+- User overrides logged in issues log
 
 ### ⚙️ Config‑Driven Pipeline
 
 - **Data types (dtypes)**
 - **Missing values**
-  - Drop rows with missing values in specific columns
-  - Fill with mean / median / mode / constant
+- Drop rows with missing values in specific columns
+- Fill with mean / median / mode / constant
 - **Text cleaning**
-  - Lowercasing
-  - Trimming spaces
-  - Removing custom characters via regex
+- Lowercasing
+- Trimming spaces
+- Removing custom characters via regex
 - **Duplicate removal**
 - **Outlier handling** via Z‑score
 - **Sorting** by one or more columns
 - **Optional train/validation/test split** (config‑based)
 
-### 💬 Simple Chat Interface (rule‑based)
+### 💬 Chat Interface (rule‑based)
 
-- Understands commands like:
-  - `drop rows with missing label`
-  - `sort by created_at descending`
-- Updates the **JSON config** automatically
+- Commands like:
+- `drop rows with missing label`
+- `sort by created_at descending`
+- Updates **JSON config** automatically
+- **Future v0.4**: LLM-powered intelligent commands
 
 ---
 
@@ -57,13 +36,15 @@ This is a foundational personal project focused on handling messy real‑world d
 
 - **FastAPI** – Backend & API
 - **Pandas** – Data processing
-- **Scikit‑learn** – Dataset splitting
-- **PyYAML** – Config‑driven cleaning rules
+- **Scikit-learn** – Dataset splitting
+- **PyYAML** – Config-driven cleaning rules
 - **Uvicorn** – ASGI server
 
 ---
 
 ## 📁 Folder Structure
+
+
 
 ```
 
@@ -169,57 +150,42 @@ You can manually edit any field:
 
 ## 🗂 Changelog
 
-### 🔹 v0.2 Alpha
+### 🔹 v0.3 Dev
 
-* Added **Web UI** with:
+* **Multi-file support** with unique ZIP & CSV naming
+* **Excel upload support**
+* **Normalized dirty score** calculation
+* **Live dirty score on upload**
+* **Severity levels** (INFO / WARNING / CRITICAL)
+* **Issues log** inside ZIP (`_issuelog.txt`)
+* **User override acknowledgements** logged
+* **UI resets** after upload or cleaning
+* Improved file naming:
+  - `[uploadedfile]_Cleaned.zip`
+  - `[uploadedfile]_cleaned.csv`
+  - `[uploadedfile]_issuelog.txt`
+* Minor UI updates (V0.3 Devnet UI)
+* Ready for **V0.4 LLM integration** for intelligent chat commands
 
-  * File upload
-  * Chat interface
-  * Live JSON config editor
-* Switched to **in‑memory session storage**
+### 🔸 v0.2 Alpha
+
+* Added **Web UI**:
+  - File upload
+  - Chat interface
+  - JSON config editor
+* Switched to **in-memory session storage**
 * Introduced **dirty dataset detection**
+* Added `/chat` endpoint
+* Refactored `CSVCleaner` with `(df_clean, dirty, messages)` return
+* Improved UI workflow & messaging
 
-  * Detect missing values & duplicates
-  * Exposed in UI + headers
-* Added simple chat endpoint (`/chat`)
+### 🔹 v0.1 Alpha
 
-  * Handles commands like “drop rows…”, “sort by…”
-* Refactored `CSVCleaner`
-
-  * Accepts either config path or dict
-  * Returns `(df_clean, dirty, messages)`
-* Improved UI messaging & workflow
-
-### 🔸 v0.1 Alpha
-
-* Initial CLI style cleaner:
-
-  * Config‑based CSV loading
-  * Data type application
-  * Missing value handling
-  * Text cleaning & duplicates removal
-  * Z‑score outliers
-  * Sorting & optional splitting
-* No web UI, chat, etc.
-
----
-
-## 🔮 Future Ideas (v0.3+)
-
-* Export a **readable `.txt` report** summarizing changes
-* Support **Excel uploads** (`.xlsx`)
-* Improved natural‑language understanding in chat
-* Automatic outlier detection
-
-```
-
----
-
-### 📌 What Changed from Your Current README
-
-✔️ Lists now correctly render with spacing  
-✔️ Code blocks only where appropriate (`bash` / `python`)  
-✔️ Sections clearly separated  
-✔️ Emojis added for structure & readability 💡 :contentReference[oaicite:1]{index=1}
-
----
+* CLI-style cleaner
+* Config-based CSV loading
+* Data type application
+* Missing value handling
+* Text cleaning & duplicates removal
+* Outlier handling via Z-score
+* Sorting & optional splitting
+* No web UI, chat, or session management
