@@ -1,5 +1,34 @@
+# 🧹 CSV / Excel Cleaning & Sorting Bot (v0.3 Dev)
 
+An interactive data cleaning tool built with **FastAPI** and **Pandas**.
 
+Users can upload CSV or Excel files, get automated cleaning suggestions, tweak rules via a simple chat or JSON config, and download a **cleaned ZIP** containing the cleaned dataset and an issues log. The app also calculates a **normalized dirty score** and shows severity levels, alerting users if the dataset has issues.
+
+This version focuses on **robust multi-file handling, normalized scoring, and internal testing UI**—ready for future integration with LLMs and advanced analytics.
+
+---
+
+## ✨ Features (v0.3 Dev)
+
+- **Web UI** (single HTML page served by FastAPI)
+- **File upload form**: CSV (.csv) & Excel (.xls/.xlsx)
+- **Chat area** to tweak rules (experimental)
+- **JSON config editor** (auto‑filled, editable)
+- **Run button** to download `[filename]_Cleaned.zip`
+  - Contains `[filename]_cleaned.csv` and `[filename]_issuelog.txt`
+- **Live dirty score** with severity displayed on upload
+- **UI reset** after each upload or cleaning
+- **In-memory sessions**
+  - Each upload gets a `session_id`
+  - Sessions are cleared upon new upload
+
+### 🧩 Dirty Dataset Detection & Normalized Score
+
+- Detects:
+  - Missing values
+  - Duplicate rows
+  - Outliers (Z-score)
+- **Normalized dirty score**:
 - Dirty messages are:
 - Shown in the UI
 - Included in `[filename]_issuelog.txt`
@@ -181,7 +210,6 @@ You can manually edit any field:
 
 ### 🔹 v0.1 Alpha
 
-<<<<<<< HEAD
 * CLI-style cleaner
 * Config-based CSV loading
 * Data type application
@@ -190,35 +218,3 @@ You can manually edit any field:
 * Outlier handling via Z-score
 * Sorting & optional splitting
 * No web UI, chat, or session management
-=======
-  * Handles commands like “drop rows…”, “sort by…”
-* Refactored `CSVCleaner`
-
-  * Accepts either config path or dict
-  * Returns `(df_clean, dirty, messages)`
-* Improved UI messaging & workflow
-
-### 🔸 v0.1 Alpha
-
-* Initial CLI style cleaner:
-
-  * Config‑based CSV loading
-  * Data type application
-  * Missing value handling
-  * Text cleaning & duplicates removal
-  * Z‑score outliers
-  * Sorting & optional splitting
-* No web UI, chat, etc.
-
----
-
-## 🔮 Future Ideas (v0.3+)
-
-* Export a **readable `.txt` report** summarizing changes
-* Support **Excel uploads** (`.xlsx`)
-* Improved natural‑language understanding in chat
-* Automatic outlier detection
-
-
-
->>>>>>> c8cf177a041bf7113c2ffa5d93d906b6a7467c27
