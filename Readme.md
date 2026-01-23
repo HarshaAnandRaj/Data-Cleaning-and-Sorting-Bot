@@ -111,6 +111,7 @@ The backend `CSVCleaner` runs this configurable sequence:
 
 ## 📁 Folder Structure
 
+```bash
 .
 ├── backend
 │   ├── main.py             # FastAPI app + cleaning logic + ZIP streaming
@@ -121,7 +122,7 @@ The backend `CSVCleaner` runs this configurable sequence:
 │   ├── app.js              # API calls, state, theme logic
 │   └── style.css           # Glassmorphism + extra styling
 └── README.md
-
+```
 
 ## 🚀 Setup & Run Locally
 
@@ -161,12 +162,12 @@ Then open: http://localhost:5173
 
 ## 📝 How to Use
 
-Upload file → Click "Choose file" → "Analyze File"
-Review dirty score & warning card (if any)
-Check data preview (first 10 rows)
-Edit JSON config (or click "Accept All Suggestions")
-Run cleaning → "Run Cleaning & Download ZIP"
-Browser downloads [original]_Cleaned.zip
+- Upload file → Click "Choose file" → "Analyze File"
+- Review dirty score & warning card (if any)
+- Check data preview (first 10 rows)
+- Edit JSON config (or click "Accept All Suggestions")
+- Run cleaning → "Run Cleaning & Download ZIP"
+- Browser downloads [original]_Cleaned.zip
 
 ## 🗂 Changelog
 
