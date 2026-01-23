@@ -168,7 +168,8 @@ Edit JSON config (or click "Accept All Suggestions")
 Run cleaning → "Run Cleaning & Download ZIP"
 Browser downloads [original]_Cleaned.zip
 
-🗂 Changelog
+## 🗂 Changelog
+
 **🔹 v0.4 (current)**
 
 - Separated backend & frontend folders
