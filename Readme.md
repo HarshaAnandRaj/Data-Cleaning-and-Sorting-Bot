@@ -195,7 +195,7 @@ Then open: http://localhost:5173
 - In-memory sessions
 - Dirty detection
 
-# 🔹 v0.1 Alpha
+**🔹 v0.1 Alpha**
 
 CLI-style cleaner
 Config-based pipeline
