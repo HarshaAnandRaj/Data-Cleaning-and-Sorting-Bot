@@ -1,220 +1,200 @@
-# 🧹 CSV / Excel Cleaning & Sorting Bot (v0.3 Dev)
+# 🧹 CSV / Excel Cleaning & Sorting Bot (v0.4)
 
-An interactive data cleaning tool built with **FastAPI** and **Pandas**.
+An interactive, **privacy-first** data cleaning tool with a separate **FastAPI** backend and a modern static frontend.
 
-Users can upload CSV or Excel files, get automated cleaning suggestions, tweak rules via a simple chat or JSON config, and download a **cleaned ZIP** containing the cleaned dataset and an issues log. The app also calculates a **normalized dirty score** and shows severity levels, alerting users if the dataset has issues.
+Upload CSV or Excel files → get automatic cleaning suggestions → review/edit JSON config → download a cleaned ZIP (cleaned dataset + issues log).
 
-This version focuses on **robust multi-file handling, normalized scoring, and internal testing UI**—ready for future integration with LLMs and advanced analytics.
+The app computes a **normalized dirty score** (0–100) with severity levels to highlight data quality issues.
 
----
+This version focuses on refined UI/UX, clearer backend API, and a fully **config-driven** cleaning pipeline — ready for future LLM integration.
 
-## ✨ Features (v0.3 Dev)
+## ✨ Features (v0.4)
 
-- **Web UI** (single HTML page served by FastAPI)
-- **File upload form**: CSV (.csv) & Excel (.xls/.xlsx)
-- **Chat area** to tweak rules (experimental)
-- **JSON config editor** (auto‑filled, editable)
-- **Run button** to download `[filename]_Cleaned.zip`
-  - Contains `[filename]_cleaned.csv` and `[filename]_issuelog.txt`
-- **Live dirty score** with severity displayed on upload
-- **UI reset** after each upload or cleaning
+- **Modern web UI** (standalone frontend)
+  - Tailwind-styled, glassmorphic design
+  - Light / dark theme toggle (persisted in local storage)
+  - Sidebar navigation + FAQ + About sections
+
+- **FastAPI backend API**
+  - `POST /upload_csv` – upload & analyze CSV / Excel
+  - `POST /run_cleaning` – execute pipeline & stream ZIP
+
+- **File upload support**
+  - CSV (`.csv`)
+  - Excel (`.xls`, `.xlsx`)
+
+- **Automatic suggestions**
+  - Suggested dtypes based on column content
+  - Suggested numeric columns for outlier detection
+  - Empty-but-structured sections for missing values, text cleaning, sorting
+
+- **JSON config editor**
+  - Auto-filled after upload
+  - Fully editable before running cleaning
+
+- **Data preview**
+  - First 10 rows rendered as HTML table
+
+- **Cleaning & download**
+  - One-click “Run Cleaning & Download ZIP”
+  - ZIP contains:
+    - `[filename]_cleaned.csv`
+    - `[filename]_issuelog.txt`
+
 - **In-memory sessions**
   - Each upload gets a `session_id`
-  - Sessions are cleared upon new upload
+  - Config + cleaning operate on session’s DataFrame
 
-### 🧩 Dirty Dataset Detection & Normalized Score
+- **UI reset**
+  - Automatically resets after upload or successful cleaning
+
+## 🧩 Dirty Dataset Detection & Normalized Score
 
 - Detects:
   - Missing values
   - Duplicate rows
-  - Outliers (Z-score)
-- **Normalized dirty score**:
-- Dirty messages are:
-- Shown in the UI
-- Included in `[filename]_issuelog.txt`
-- Severity levels:
-- INFO / WARNING / CRITICAL
-- User overrides logged in issues log
 
-### ⚙️ Config‑Driven Pipeline
+- **Normalized dirty score** (0–100):
+  - Based on missing cells + duplicate rows
+  - Normalized against total cells
 
-- **Data types (dtypes)**
-- **Missing values**
-- Drop rows with missing values in specific columns
-- Fill with mean / median / mode / constant
-- **Text cleaning**
-- Lowercasing
-- Trimming spaces
-- Removing custom characters via regex
-- **Duplicate removal**
-- **Outlier handling** via Z‑score
-- **Sorting** by one or more columns
-- **Optional train/validation/test split** (config‑based)
+- Dirty messages shown in UI via warning card
+- Also written into `[filename]_issuelog.txt`
 
-### 💬 Chat Interface (rule‑based)
+- **Severity levels**:
+  - INFO
+  - LOW
+  - MEDIUM
+  - HIGH
 
-- Commands like:
-- `drop rows with missing label`
-- `sort by created_at descending`
-- Updates **JSON config** automatically
-- **Future v0.4**: LLM-powered intelligent commands
+## ⚙️ Config-Driven Cleaning Pipeline
 
----
+The backend `CSVCleaner` runs this configurable sequence:
+
+1. **Data types** (`dtypes`)  
+   int, float, category, str, datetime, ...
+
+2. **Missing values**
+   - `drop_rows_if_missing_any_of`: critical columns
+   - Fill with: mean, median, mode, constant ("0", "unknown", custom)
+   - Type-aware handling + safe fallbacks
+
+3. **Text cleaning**
+   - `lower_columns`
+   - `strip_spaces_columns`
+   - Optional `remove_chars` (regex pattern)
+
+4. **Duplicate removal**
+   - `subset` + `keep` strategy
+
+5. **Outlier handling** (Z-score)
+   - Configurable columns + threshold
+
+6. **Sorting**
+   - `by` + `ascending`
+
+7. **Optional split** (reserved for future use)
+
+**Pipeline order**:
+
+## apply_dtypes → handle_missing → text_clean → drop_duplicates → handle_outliers → sort
+
+
+> 💬 **Note**: The experimental chat interface has been removed in v0.4.  
+> All control is now explicit via the JSON editor (with room to re-add LLM chat later).
 
 ## 🛠 Tech Stack
 
-- **FastAPI** – Backend & API
-- **Pandas** – Data processing
-- **Scikit-learn** – Dataset splitting
-- **PyYAML** – Config-driven cleaning rules
-- **Uvicorn** – ASGI server
-
----
+- **Backend**: FastAPI, Pandas, Scikit-learn, PyYAML, Uvicorn
+- **Frontend**: Plain HTML + Tailwind CSS + vanilla JavaScript
+- No heavy frontend frameworks
 
 ## 📁 Folder Structure
 
-
-
-```
-
 .
-├── main.py          # FastAPI app + pipeline + UI
-├── config.yaml      # Example config (CLI / future use)
-├── requirements.txt # Python dependencies
+├── backend
+│   ├── main.py             # FastAPI app + cleaning logic + ZIP streaming
+│   ├── config.yaml         # Example config (CLI/offline use)
+│   └── requirements.txt    # Python dependencies
+├── frontend
+│   ├── index.html          # Main UI (upload, preview, config, FAQ)
+│   ├── app.js              # API calls, state, theme logic
+│   └── style.css           # Glassmorphism + extra styling
 └── README.md
 
-````
-
----
 
 ## 🚀 Setup & Run Locally
 
-### 1️⃣ Clone the repository
+1. **Clone repository**
 
 ```bash
 git clone https://github.com/HarshaAnandRaj/Data-Cleaning-and-Sorting-Bot.git
 cd Data-Cleaning-and-Sorting-Bot
-````
-
-### 2️⃣ Create and activate virtual environment
-
-```bash
-python -m venv venv
 ```
 
-Activate:
-
-* **Windows**
-
-  ```bash
-  venv\Scripts\activate
-  ```
-
-* **macOS / Linux**
-
-  ```bash
-  source venv/bin/activate
-  ```
-
-### 3️⃣ Install dependencies
+2. **Activate:**
 
 ```bash
-pip install -r requirements.txt
+WindowsBashvenv\Scripts\activate
+macOS / LinuxBashsource venv/bin/activate
 ```
 
-### 4️⃣ Run the app (with auto‑reload)
+3. **Install dependencies**
 
 ```bash
-python main.py
+Bashpip install -r requirements.txt
+```
+4. **Run backend**
+
+```bash
+Bashuvicorn main:app --reload --host 0.0.0.0 --port 8000
+Backend → http://localhost:8000
 ```
 
-### 5️⃣ Open in browser
+5. **Open frontend**
 
-👉 [http://127.0.0.1:8000](http://127.0.0.1:8000)
-
----
+```bash
+Bashcd ../frontend
+python -m http.server 5173
+Then open: http://localhost:5173
+```
 
 ## 📝 How to Use
 
-### 📌 Upload CSV
+Upload file → Click "Choose file" → "Analyze File"
+Review dirty score & warning card (if any)
+Check data preview (first 10 rows)
+Edit JSON config (or click "Accept All Suggestions")
+Run cleaning → "Run Cleaning & Download ZIP"
+Browser downloads [original]_Cleaned.zip
 
-1. Click **Choose file** and select a `.csv` file.
-2. Click **Upload & Suggest Config**
+🗂 Changelog
+# 🔹 v0.4 (current)
 
-   * Backend stores the DataFrame in a session
-   * Generates basic config (dtypes, missing, etc.)
-   * Checks for dirty dataset
+Separated backend & frontend folders
+Modern glassmorphism UI
+Improved missing value handling (type-aware)
+Better dirty scoring & severity
+ZIP always includes before/after scores in log
+Removed experimental chat UI
 
-### 📌 Review Dirty Warning
+# 🔸 v0.3 Dev
 
-* If missing values or duplicates are found, a red warning appears.
+Multi-file support + unique naming
+Excel support
+Normalized dirty score
+Issues log in ZIP
+Basic chat-style interface (experimental)
 
-### 💬 Chat to Adjust Rules (Optional)
+# 🔹 v0.2 Alpha
 
-Example messages:
+Initial web UI
+File upload + JSON editor
+In-memory sessions
+Dirty detection
 
-* `drop rows with missing label`
-* `sort by price descending`
+# 🔹 v0.1 Alpha
 
-(The chat updates config JSON automatically.)
-
-### ✏️ Edit JSON Config
-
-You can manually edit any field:
-
-* dtypes
-* missing handling
-* sort columns
-* etc.
-
-### 🧼 Run Cleaning
-
-* Click **Run Cleaning**
-* Pipeline runs:
-  `apply_dtypes → handle_missing → text_clean → drop_duplicates → handle_outliers → sort → split (optional)`
-* Downloads `cleaned.csv`
-* Dirty messages included if still dirty after cleaning
-
----
-
-## 🗂 Changelog
-
-### 🔹 v0.3 Dev
-
-* **Multi-file support** with unique ZIP & CSV naming
-* **Excel upload support**
-* **Normalized dirty score** calculation
-* **Live dirty score on upload**
-* **Severity levels** (INFO / WARNING / CRITICAL)
-* **Issues log** inside ZIP (`_issuelog.txt`)
-* **User override acknowledgements** logged
-* **UI resets** after upload or cleaning
-* Improved file naming:
-  - `[uploadedfile]_Cleaned.zip`
-  - `[uploadedfile]_cleaned.csv`
-  - `[uploadedfile]_issuelog.txt`
-* Minor UI updates (V0.3 Devnet UI)
-* Ready for **V0.4 LLM integration** for intelligent chat commands
-
-### 🔸 v0.2 Alpha
-
-* Added **Web UI**:
-  - File upload
-  - Chat interface
-  - JSON config editor
-* Switched to **in-memory session storage**
-* Introduced **dirty dataset detection**
-* Added `/chat` endpoint
-* Refactored `CSVCleaner` with `(df_clean, dirty, messages)` return
-* Improved UI workflow & messaging
-
-### 🔹 v0.1 Alpha
-
-* CLI-style cleaner
-* Config-based CSV loading
-* Data type application
-* Missing value handling
-* Text cleaning & duplicates removal
-* Outlier handling via Z-score
-* Sorting & optional splitting
-* No web UI, chat, or session management
+CLI-style cleaner
+Config-based pipeline
+Basic dtype, missing, text, duplicates, outliers, sorting

@@ -1,0 +1,46 @@
+# Example config.yaml - updated with Option C strategy
+
+# Basic schema and types
+dtypes:
+  "Rank": "int"
+  "Artist": "category"
+  "Song": "str"
+  "Peak": "int"
+  "All Time Peak": "int"
+  "Streams": "int"
+  "Date": "datetime"
+
+# Missing value handling - Option C applied
+missing:
+  drop_rows_if_missing_any_of:
+    - "All Time Peak"           # Drop rows missing the most important metric
+  fill:
+    "Peak": "median"            # Fill weekly/peak with median
+    "Streams": "median"         # typical fallback for other numerics
+    "Artist": "unknown"
+    "Song": "unknown"
+
+# Text cleaning
+text_cleaning:
+  lower_columns: ["Artist", "Song"]
+  strip_spaces_columns: ["Artist", "Song"]
+
+# Duplicates
+duplicates:
+  subset: ["Artist", "Song", "Date"]
+  keep: "first"
+
+# Outliers (example)
+outliers:
+  zscore:
+    columns: ["Streams", "Peak"]
+    threshold: 4.0
+
+# Sorting
+sort:
+  by: ["Date"]
+  ascending: [true]
+
+# Optional split
+split:
+  enabled: false
