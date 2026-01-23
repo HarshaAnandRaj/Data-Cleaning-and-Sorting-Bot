@@ -169,29 +169,29 @@ Run cleaning → "Run Cleaning & Download ZIP"
 Browser downloads [original]_Cleaned.zip
 
 🗂 Changelog
-# 🔹 v0.4 (current)
+**🔹 v0.4 (current)**
 
-Separated backend & frontend folders
-Modern glassmorphism UI
-Improved missing value handling (type-aware)
-Better dirty scoring & severity
-ZIP always includes before/after scores in log
-Removed experimental chat UI
+- Separated backend & frontend folders
+- Modern glassmorphism UI
+- Improved missing value handling (type-aware)
+- Better dirty scoring & severity
+- ZIP always includes before/after scores in log
+- Removed experimental chat UI
 
-# 🔸 v0.3 Dev
+**🔸 v0.3 Dev**
 
-Multi-file support + unique naming
-Excel support
-Normalized dirty score
-Issues log in ZIP
-Basic chat-style interface (experimental)
+- Multi-file support + unique naming
+- Excel support
+- Normalized dirty score
+- Issues log in ZIP
+- Basic chat-style interface (experimental)
 
-# 🔹 v0.2 Alpha
+**🔹 v0.2 Alpha**
 
-Initial web UI
-File upload + JSON editor
-In-memory sessions
-Dirty detection
+- Initial web UI
+- File upload + JSON editor
+- In-memory sessions
+- Dirty detection
 
 # 🔹 v0.1 Alpha
 
