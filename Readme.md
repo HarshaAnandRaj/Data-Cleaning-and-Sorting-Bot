@@ -197,6 +197,6 @@ Then open: http://localhost:5173
 
 **🔹 v0.1 Alpha**
 
-CLI-style cleaner
-Config-based pipeline
-Basic dtype, missing, text, duplicates, outliers, sorting
+- CLI-style cleaner
+- Config-based pipeline
+- Basic dtype, missing, text, duplicates, outliers, sorting
