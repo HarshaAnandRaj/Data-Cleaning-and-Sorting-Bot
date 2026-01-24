@@ -1,5 +1,5 @@
 let sessionId = null;
-const API_BASE = import.meta.env.VITE_API_BASE || "https://data-cleaner-r3y3.onrender.com";
+const API_BASE = "https://data-cleaner-r3y3.onrender.com";
 
 function getEl(selector) {
   const el = document.querySelector(selector);
