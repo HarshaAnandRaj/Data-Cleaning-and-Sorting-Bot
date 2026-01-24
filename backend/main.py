@@ -8,8 +8,10 @@ import pandas as pd
 import re
 from typing import List, Dict, Any, Tuple
 import numpy as np
+import asyncio
+import time
 
-app = FastAPI(title="CSV & Excel Cleaning Bot – V0.4")
+app = FastAPI(title="CSV & Excel Cleaning Bot – V0.6")
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,37 +26,19 @@ SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 def to_python(obj: Any) -> Any:
     """Convert NumPy/Pandas types to native Python for JSON serialization."""
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, np.bool_):
-        return bool(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, (list, tuple)):
-        return [to_python(item) for item in obj]
-    if isinstance(obj, dict):
-        return {k: to_python(v) for k, v in obj.items()}
-    if isinstance(obj, pd.Series):
-        return to_python(obj.to_dict())
-    if isinstance(obj, pd.DataFrame):
-        return to_python(obj.to_dict(orient="records"))
+    if isinstance(obj, np.integer): return int(obj)
+    if isinstance(obj, np.floating): return float(obj)
+    if isinstance(obj, np.bool_): return bool(obj)
+    if isinstance(obj, np.ndarray): return obj.tolist()
+    if isinstance(obj, (list, tuple)): return [to_python(item) for item in obj]
+    if isinstance(obj, dict): return {k: to_python(v) for k, v in obj.items()}
+    if isinstance(obj, pd.Series): return to_python(obj.to_dict())
+    if isinstance(obj, pd.DataFrame): return to_python(obj.to_dict(orient="records"))
     return obj
 
 
-def compute_dirty_stats(df: pd.DataFrame) -> Tuple[float, str, int, int]:
-    """
-    Compute dirty score and severity for a DataFrame.
-    Counts NaN + empty/whitespace strings as missing.
-
-    Returns:
-        dirty_score: float (0–100)
-        severity: CLEAN / GOOD / WARNING / CRITICAL
-        missing: count of missing/blank cells
-        dups: count of duplicate rows
-    """
-    # Missing = NaN + empty / whitespace strings
+def compute_dirty_stats(df: pd.DataFrame) -> Dict[str, Any]:
+    """Compute detailed dirty stats – pre & post cleaning."""
     missing = int(
         df.isna().sum().sum()
         + df.apply(lambda x: x.astype(str).str.strip() == "").sum().sum()
@@ -64,86 +48,106 @@ def compute_dirty_stats(df: pd.DataFrame) -> Tuple[float, str, int, int]:
 
     dirty_score = round((missing + dups) / total * 100, 2) if total else 0.0
 
-    if dirty_score == 0:
-        severity = "CLEAN"
-    elif dirty_score < 5:
-        severity = "GOOD"
-    elif dirty_score < 15:
-        severity = "WARNING"
-    else:
-        severity = "CRITICAL"
+    imputed_ratio = 0.0  # updated post-clean
 
-    return dirty_score, severity, missing, dups
+    severity = "CLEAN" if dirty_score == 0 else "GOOD" if dirty_score < 5 else "WARNING" if dirty_score < 15 else "CRITICAL"
+
+    missing_pct = (missing / total * 100) if total else 0
+    dup_pct = (dups / df.shape[0] * 100) if df.shape[0] else 0
+
+    unsalvageable = False
+    unsalvage_reasons = []
+
+    if missing_pct > 75:
+        unsalvageable = True
+        unsalvage_reasons.append(f"{missing_pct:.1f}% of cells missing/blank — most data would be fabricated")
+    if dup_pct > 50:
+        unsalvageable = True
+        unsalvage_reasons.append(f"{dup_pct:.1f}% duplicate rows — very little unique signal")
+    high_missing_cols = [col for col in df.columns if df[col].isna().mean() > 0.85]
+    if high_missing_cols:
+        unsalvageable = True
+        unsalvage_reasons.append(f"Critical columns {', '.join(high_missing_cols[:3])} {'and more' if len(high_missing_cols) > 3 else ''} are >85% missing")
+
+    return {
+        "dirty_score": dirty_score,
+        "severity": severity,
+        "missing_count": missing,
+        "duplicate_rows": dups,
+        "total_cells": total,
+        "imputed_ratio": imputed_ratio,
+        "unsalvageable": unsalvageable,
+        "unsalvage_reasons": unsalvage_reasons
+    }
 
 
 class RunCleaningPayload(BaseModel):
     session_id: str
+    config: Dict[str, Any] = {}
+    override_warnings: bool = False
 
 
 class CSVCleaner:
-    """Config-free cleaning pipeline with basic imputations and outlier removal."""
-
-    def run(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, float, float, str, List[str], List[str]]:
-        """
-        Run the cleaning pipeline on a copy of df.
-
-        Returns:
-            df_clean
-            dirty_before
-            dirty_after
-            severity_after
-            remaining_issue_messages
-            change_descriptions
-        """
-        changes: List[str] = []
-        messages: List[str] = []
+    def run(self, df: pd.DataFrame, config: Dict[str, Any] = None) -> Tuple[pd.DataFrame, Dict[str, Any], Dict[str, Any], List[str], List[str]]:
+        config = config or {}
+        changes = []
+        messages = []
 
         df_orig = df.copy()
+        orig_stats = compute_dirty_stats(df_orig)
 
-        # Treat empty strings / whitespace-only as missing
+        imputed_count = 0
+
+        # Simulate progress (real async processing would replace this)
+        async def simulate_progress():
+            for i in range(1, 101, 10):
+                await asyncio.sleep(0.3)  # simulate work
+                # In real app, update frontend via WebSocket or SSE
+
+        asyncio.create_task(simulate_progress())
+
+        # Missing value handling
         df = df.replace(r"^\s*$", pd.NA, regex=True)
+        fill_strategy = config.get("missing_fill", "auto")
 
-        # Fill missing values (type-aware, with safe fallback)
         for col in df.columns:
             if not df[col].isna().any():
                 continue
 
             try:
-                if pd.api.types.is_numeric_dtype(df[col]):
+                if fill_strategy == "zero" or (fill_strategy == "auto" and pd.api.types.is_numeric_dtype(df[col])):
+                    val = 0
+                elif fill_strategy == "unknown":
+                    val = "unknown"
+                elif pd.api.types.is_numeric_dtype(df[col]):
                     val = df[col].median()
                     val = 0 if pd.isna(val) else val
-                    df[col] = df[col].fillna(val)
-                    changes.append(f"Filled '{col}' missing with median ({val})")
                 else:
                     mode_series = df[col].mode()
-                    if not mode_series.empty:
-                        val = mode_series.iloc[0]
-                        df[col] = df[col].fillna(val)
-                        changes.append(f"Filled '{col}' missing with mode ({val})")
-                    else:
-                        df[col] = df[col].fillna("unknown")
-                        changes.append(f"Filled '{col}' missing with 'unknown'")
+                    val = mode_series.iloc[0] if not mode_series.empty else "unknown"
+
+                imputed_count += df[col].isna().sum()
+                df[col] = df[col].fillna(val)
+                changes.append(f"Filled '{col}' missing with {val!r} (strategy: {fill_strategy})")
             except Exception as exc:
                 fallback = 0 if pd.api.types.is_numeric_dtype(df[col]) else "unknown"
+                imputed_count += df[col].isna().sum()
                 df[col] = df[col].fillna(fallback)
-                changes.append(
-                    f"Fallback fill for '{col}' with {fallback!r} "
-                    f"(due to {type(exc).__name__})"
-                )
+                changes.append(f"Fallback fill for '{col}' with {fallback!r} (due to {type(exc).__name__})")
 
-        # Clean text columns (strip + lowercase)
+        # Text cleaning
         for col in df.select_dtypes(include=["object"]).columns:
             df[col] = df[col].astype(str).str.strip().str.lower()
             changes.append(f"Cleaned text in '{col}' (strip + lowercase)")
 
-        # Remove duplicates
+        # Duplicates
         before = len(df)
         df = df.drop_duplicates()
         removed = before - len(df)
         if removed > 0:
             changes.append(f"Removed {removed} duplicate rows")
 
-        # Remove outliers (after imputation) using combined Z-score mask
+        # Outliers
         numeric_cols = df.select_dtypes(include=["number"]).columns
         removed_outliers = 0
         if len(numeric_cols) > 0:
@@ -155,7 +159,6 @@ class CSVCleaner:
                     continue
                 z = (df[col] - mean) / std
                 mask &= z.abs() <= 3
-
             before_len = len(df)
             df = df[mask]
             removed_outliers = before_len - len(df)
@@ -163,24 +166,24 @@ class CSVCleaner:
         if removed_outliers > 0:
             changes.append(f"Removed {removed_outliers} outlier rows (|z| > 3)")
 
-        # Dirty score before & after cleaning
-        dirty_before, _, missing_before, dups_before = compute_dirty_stats(df_orig)
-        dirty_after, severity_after, missing_after, dups_after = compute_dirty_stats(df)
+        # Final stats
+        final_stats = compute_dirty_stats(df)
+        final_stats["imputed_ratio"] = round(imputed_count / orig_stats["total_cells"] * 100, 2) if orig_stats["total_cells"] else 0.0
 
-        if missing_after > 0:
-            messages.append(f"Missing values: {missing_after:,} cells (including blanks)")
-        if dups_after > 0:
-            messages.append(f"Duplicate rows: {dups_after:,}")
+        # ML readiness verdict
+        verdict = "✅ Fit for ML training"
+        if final_stats["imputed_ratio"] > 40 or final_stats["dirty_score"] > 10:
+            verdict = "⚠️ Usable with caution"
+        if final_stats["imputed_ratio"] > 70 or (orig_stats["missing_count"] / orig_stats["total_cells"] * 100 if orig_stats["total_cells"] else 0) > 80:
+            verdict = "❌ Not recommended for ML"
 
-        return df, dirty_before, dirty_after, severity_after, messages, changes
+        messages.append(f"ML TRAINING READINESS: {verdict}")
+
+        return df, orig_stats, final_stats, changes, messages
 
 
 @app.post("/upload_csv")
 async def upload_csv(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
-    """
-    Upload one or more CSV/Excel files, compute preview dirty stats,
-    and register a new in-memory session.
-    """
     if not files:
         raise HTTPException(400, "No files uploaded")
 
@@ -206,17 +209,10 @@ async def upload_csv(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
         originals.append(df)
         filenames.append(filename)
 
-        dirty_score, severity, missing, dups = compute_dirty_stats(df)
+        stats = compute_dirty_stats(df)
+        stats["filename"] = filename
 
-        file_stats.append(
-            {
-                "filename": filename,
-                "dirty_score": dirty_score,
-                "severity": severity,
-                "missing_count": missing,
-                "duplicate_rows": dups,
-            }
-        )
+        file_stats.append(stats)
 
     if not originals:
         raise HTTPException(400, "No valid files processed")
@@ -238,10 +234,6 @@ async def upload_csv(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
 
 @app.post("/run_cleaning")
 async def run_cleaning(payload: RunCleaningPayload) -> StreamingResponse:
-    """
-    Run the cleaning pipeline for the given session_id and
-    return a ZIP with cleaned CSVs + a consolidated report.
-    """
     session_id = payload.session_id
 
     if session_id not in SESSIONS:
@@ -255,17 +247,26 @@ async def run_cleaning(payload: RunCleaningPayload) -> StreamingResponse:
 
     cleaner = CSVCleaner()
 
+    has_unsalvageable = any(
+        compute_dirty_stats(df).get("unsalvageable", False)
+        for df in originals
+    )
+
+    if has_unsalvageable and not payload.override_warnings:
+        raise HTTPException(400, "Some files are unsalvageable. Override required.")
+
     for idx, df in enumerate(originals):
-        df_clean, dirty_before, dirty_after, severity, messages, changes = cleaner.run(df)
+        df_clean, orig_stats, final_stats, changes, messages = cleaner.run(df, config=payload.config)
+
         cleaned_files.append(df_clean)
 
         log = {
             "filename": filenames[idx],
-            "dirty_before": dirty_before,
-            "dirty_after": dirty_after,
-            "severity": severity,
+            "dirty_before": orig_stats["dirty_score"],
+            "dirty_after": final_stats["dirty_score"],
+            "severity": final_stats["severity"],
             "changes": changes,
-            "remaining_issues": messages
+            "messages": messages
         }
         all_logs.append(log)
 
@@ -275,31 +276,20 @@ async def run_cleaning(payload: RunCleaningPayload) -> StreamingResponse:
             safe_name = re.sub(r'[^\w\-_. ]', '_', filenames[idx])
             zf.writestr(f"{safe_name}_cleaned.csv", df_clean.to_csv(index=False))
 
-        report = "Multi-File Cleaning Report\n" + "=" * 60 + "\n\n"
+        report = "Multi-File Cleaning Report – V0.6\n" + "=" * 60 + "\n\n"
+
+        if has_unsalvageable and payload.override_warnings:
+            report += "⚠️ USER OVERRIDE – Proceeded despite unsalvageable/high-risk warnings on some files.\n\n"
+
         for log in all_logs:
             report += f"File: {log['filename']}\n"
             report += f"  Dirty BEFORE: {log['dirty_before']:.2f}%\n"
             report += f"  Dirty AFTER : {log['dirty_after']:.2f}%\n"
             report += f"  Severity: {log['severity']}\n"
-
-            changes = log.get("changes") or []
-            remaining = log.get("remaining_issues") or []
-
-            report += "  Changes applied:\n"
-            report += (
-                "\n".join(f"    • {c}" for c in changes) + "\n"
-                if changes
-                else "    • (none)\n"
-            )
-
-            report += "  Remaining issues:\n"
-            report += (
-                "\n".join(f"    • {m}" for m in remaining) + "\n"
-                if remaining
-                else "    • (none)\n"
-            )
-
+            report += "  Changes applied:\n" + "\n".join(f"    • {c}" for c in log['changes'] or ["(none)"]) + "\n"
+            report += "  Messages / Verdict:\n" + "\n".join(f"    • {m}" for m in log['messages'] or ["(none)"]) + "\n"
             report += "-" * 60 + "\n\n"
+
         zf.writestr("CLEANING_REPORT.txt", report)
 
     zip_buffer.seek(0)

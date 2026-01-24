@@ -1,5 +1,4 @@
 let sessionId = null;
-let lastUploadMeta = null;
 const API_BASE = "http://localhost:8000";
 
 function getEl(selector) {
@@ -9,14 +8,11 @@ function getEl(selector) {
 }
 
 async function apiFetch(path, options = {}) {
-  const url = `${API_BASE}${path}`;
   let res;
   try {
-    res = await fetch(url, options);
+    res = await fetch(`${API_BASE}${path}`, options);
   } catch (networkErr) {
-    throw new Error(
-      `Cannot reach backend at ${API_BASE}. Is it running? (${networkErr.message})`
-    );
+    throw new Error(`Cannot reach backend at ${API_BASE}. Is it running? (${networkErr.message})`);
   }
 
   let data;
@@ -35,10 +31,10 @@ async function apiFetch(path, options = {}) {
 
 function severityClass(severity) {
   switch (severity) {
-    case "CLEAN":   return "text-green-600 dark:text-green-400";
-    case "GOOD":    return "text-emerald-600 dark:text-emerald-400";
+    case "CLEAN": return "text-green-600 dark:text-green-400";
+    case "GOOD": return "text-emerald-600 dark:text-emerald-400";
     case "WARNING": return "text-yellow-600 dark:text-yellow-400";
-    default:        return "text-red-600 dark:text-red-400";
+    default: return "text-red-600 dark:text-red-400";
   }
 }
 
@@ -130,6 +126,24 @@ document.addEventListener("DOMContentLoaded", () => {
   if (closeSidebarBtn) closeSidebarBtn.addEventListener("click", closeSidebar);
   if (overlay) overlay.addEventListener("click", closeSidebar);
 
+  // Tab switching
+  const tabButtons = document.querySelectorAll('[data-tab]');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach(b => b.classList.remove('tab-active'));
+      btn.classList.add('tab-active');
+
+      tabContents.forEach(content => content.classList.add('hidden'));
+      const target = getEl(`#tab-${btn.dataset.tab}`);
+      if (target) target.classList.remove('hidden');
+    });
+  });
+
+  const homeTab = getEl('#tab-home-btn');
+  if (homeTab) homeTab.click();
+
   // Upload handler
   const uploadForm = getEl("#upload-form");
   if (uploadForm) {
@@ -142,6 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const dirtyMsgEl = getEl("#dirty-msg");
       const uploadText = getEl("#upload-text");
       const uploadSpinner = getEl("#upload-spinner");
+      const configArea = getEl("#config-area");
       const runStatus = getEl("#run-status");
 
       if (!fileInput || !status || !dirtyScoreEl) return;
@@ -157,7 +172,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Reset previous state
       sessionId = null;
-      lastUploadMeta = null;
       dirtyScoreEl.innerHTML = "--";
       if (dirtyMsgEl) dirtyMsgEl.classList.add("hidden");
       if (runStatus) runStatus.textContent = "";
@@ -174,7 +188,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         sessionId = data.session_id;
-        lastUploadMeta = data;
 
         let scoreHtml = `<div class="text-sm font-medium mb-2">Dirty Scores (${data.file_count} file${data.file_count > 1 ? "s" : ""}):</div><ul class="space-y-1">`;
         data.file_stats.forEach((stat) => {
@@ -184,14 +197,11 @@ document.addEventListener("DOMContentLoaded", () => {
         scoreHtml += "</ul>";
         dirtyScoreEl.innerHTML = scoreHtml;
 
-        if (
-          dirtyMsgEl &&
-          data.file_stats.some((s) => s.severity !== "CLEAN" && s.severity !== "GOOD")
-        ) {
-          dirtyMsgEl.classList.remove("hidden");
+        if (data.file_stats.some(s => s.severity !== "CLEAN" && s.severity !== "GOOD")) {
+          if (dirtyMsgEl) dirtyMsgEl.classList.remove("hidden");
         }
 
-        status.textContent = `Analysis complete (${data.file_count} file${data.file_count > 1 ? "s" : ""}). Click Run to clean all files.`;
+        status.textContent = `Analysis complete (${data.file_count} file${data.file_count > 1 ? "s" : ""}). Ready to clean.`;
       } catch (err) {
         console.error(err);
         status.textContent = `Error: ${err.message}`;
@@ -209,20 +219,32 @@ document.addEventListener("DOMContentLoaded", () => {
       const status = getEl("#run-status");
       const btnText = getEl("#run-btn-text");
       const spinner = getEl("#run-spinner");
+      const configArea = getEl("#config-area");
 
       if (!sessionId) {
         if (status) status.textContent = "Upload files first.";
         return;
       }
 
-      setButtonLoading(btnText, spinner, "Cleaning all files...");
+      const configText = configArea ? configArea.value.trim() : "";
+      let config = {};
+      if (configText) {
+        try {
+          config = JSON.parse(configText);
+        } catch (e) {
+          if (status) status.textContent = "Invalid JSON config.";
+          return;
+        }
+      }
+
+      setButtonLoading(btnText, spinner, "Cleaning...");
       runBtn.disabled = true;
 
       try {
         const res = await fetch(`${API_BASE}/run_cleaning`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId }),
+          body: JSON.stringify({ session_id: sessionId, config, override_warnings: true }),
         });
 
         if (!res.ok) {
