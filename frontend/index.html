@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CSV Cleaning Bot – V0.5</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-500">
+
+  <!-- Hover trigger for sidebar (desktop) -->
+  <div id="sidebar-trigger" class="fixed left-0 top-0 w-3 h-full z-50 hidden lg:block cursor-pointer bg-transparent hover:bg-white/10 dark:hover:bg-gray-800/10 transition-all duration-300"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-72 glass transform -translate-x-full transition-transform duration-500 ease-in-out">
+    <div class="flex flex-col h-full p-6">
+      <div class="flex items-center justify-between mb-10">
+        <h2 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">CSV Cleaner</h2>
+        <button id="close-sidebar" class="lg:hidden text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100">
+          <i class="fas fa-times text-2xl"></i>
+        </button>
+      </div>
+
+      <nav class="space-y-2 flex-1">
+        <a href="#" class="flex items-center px-4 py-3 rounded-2xl hover:bg-white/40 dark:hover:bg-gray-800/40 transition text-gray-900 dark:text-gray-100 font-medium">
+          <i class="fas fa-home w-6 text-center"></i><span class="ml-4">Home</span>
+        </a>
+        <a href="#faq" class="flex items-center px-4 py-3 rounded-2xl hover:bg-white/40 dark:hover:bg-gray-800/40 transition text-gray-900 dark:text-gray-100 font-medium">
+          <i class="fas fa-question-circle w-6 text-center"></i><span class="ml-4">FAQ</span>
+        </a>
+        <a href="#about" class="flex items-center px-4 py-3 rounded-2xl hover:bg-white/40 dark:hover:bg-gray-800/40 transition text-gray-900 dark:text-gray-100 font-medium">
+          <i class="fas fa-info-circle w-6 text-center"></i><span class="ml-4">About</span>
+        </a>
+      </nav>
+
+      <div class="mt-auto pt-8">
+        <button id="theme-toggle" class="w-full flex items-center justify-center px-4 py-3 rounded-2xl bg-white/30 dark:bg-gray-800/30 hover:bg-white/50 dark:hover:bg-gray-700/50 transition backdrop-blur-md text-gray-900 dark:text-gray-100 font-medium">
+          <i id="theme-icon" class="fas fa-moon mr-3"></i>
+          <span id="theme-text">Dark Mode</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Mobile overlay -->
+  <div id="overlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity duration-300"></div>
+
+  <!-- Main content -->
+  <div class="transition-all duration-500">
+    <header class="glass sticky top-0 z-30 border-b border-white/20 dark:border-gray-800/50 backdrop-blur-xl">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+          <div class="flex items-center">
+            <button id="menu-btn" class="lg:hidden p-2 rounded-xl hover:bg-white/30 dark:hover:bg-gray-800/30 transition">
+              <i class="fas fa-bars text-xl text-gray-900 dark:text-gray-100"></i>
+            </button>
+            <h1 class="text-xl font-bold text-gray-900 dark:text-white ml-3 lg:ml-0">CSV Cleaning Bot</h1>
+          </div>
+
+          <button id="theme-toggle-header" class="p-2 rounded-xl hover:bg-white/30 dark:hover:bg-gray-800/30 transition">
+            <i id="theme-icon-header" class="fas fa-moon text-gray-900 dark:text-gray-100"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="space-y-10">
+
+        <!-- Upload Card -->
+        <div class="glass rounded-3xl p-6 md:p-10 fade-in">
+          <h2 class="text-3xl font-semibold mb-4 text-gray-900 dark:text-white">Clean Your Data Effortlessly</h2>
+          <p class="text-lg text-gray-700 dark:text-gray-300 mb-8">
+            Upload one or more CSV / Excel files → get automated cleaning → download ZIP with report.
+          </p>
+
+          <form id="upload-form" class="space-y-6">
+            <div>
+              <label class="block text-base font-medium text-gray-700 dark:text-gray-300 mb-3">
+                Select File(s) — multiple allowed
+              </label>
+              <div class="flex flex-col sm:flex-row gap-4">
+                <input 
+                  type="file" 
+                  id="file-input" 
+                  accept=".csv,.xls,.xlsx" 
+                  multiple
+                  class="block w-full text-base text-gray-900 dark:text-gray-300 border border-white/30 dark:border-gray-700/50 rounded-2xl cursor-pointer bg-white/50 dark:bg-gray-800/50 file:mr-4 file:py-3.5 file:px-6 file:rounded-xl file:border-0 file:text-base file:font-medium file:bg-white/60 file:text-gray-800 dark:file:bg-gray-700/60 dark:file:text-gray-200 hover:file:bg-white/80 dark:hover:file:bg-gray-600/70 transition backdrop-blur-md shadow-inner"
+                  required
+                >
+                <button 
+                  type="submit" 
+                  class="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg hover:shadow-2xl transition flex items-center justify-center min-w-[180px] text-base backdrop-blur-md"
+                >
+                  <span id="upload-text">Analyze Files</span>
+                  <svg id="upload-spinner" class="hidden ml-3 h-6 w-6 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8h8a8 8 0 01-16 0z"></path>
+                  </svg>
+                </button>
+              </div>
+              <p id="upload-status" class="mt-4 text-base text-gray-600 dark:text-gray-400 min-h-[1.5rem]"></p>
+            </div>
+          </form>
+        </div>
+
+        <!-- Status area with per-file dirty scores -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
+          <div id="dirty-msg" class="hidden glass p-6 rounded-2xl border-l-4 border-red-500 dark:border-red-400">
+            <p class="font-medium text-red-700 dark:text-red-400 text-lg">Warning: Data Quality Issues Detected</p>
+            <p class="text-base mt-2 text-gray-700 dark:text-gray-300">Some files have missing values, outliers or duplicates.</p>
+          </div>
+
+          <div class="glass p-6 rounded-2xl">
+            <div class="text-base text-gray-600 dark:text-gray-400 mb-3">Dirty Scores (after analysis)</div>
+            <div id="dirty-score" class="text-sm space-y-2"></div>
+          </div>
+        </div>
+
+        <!-- Run Button -->
+        <div class="glass rounded-3xl p-6 md:p-10 slide-in text-center">
+          <button id="run-btn" class="px-10 py-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg hover:shadow-2xl transition flex items-center justify-center gap-3 text-lg mx-auto backdrop-blur-md disabled:opacity-50 disabled:cursor-not-allowed">
+            <span id="run-btn-text">Run Cleaning & Download ZIP</span>
+            <svg id="run-spinner" class="hidden h-6 w-6 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8h8a8 8 0 01-16 0z"></path>
+            </svg>
+          </button>
+          <p id="run-status" class="mt-4 text-base text-gray-600 dark:text-gray-400 min-h-[1.5rem]"></p>
+        </div>
+
+        <!-- FAQ -->
+        <section id="faq" class="glass rounded-3xl p-8 md:p-10 slide-in">
+          <h2 class="text-2xl md:text-3xl font-bold mb-8 text-gray-900 dark:text-white">Frequently Asked Questions</h2>
+          <div class="space-y-8">
+            <div class="border-b border-white/10 dark:border-gray-700/50 pb-6">
+              <h3 class="text-xl font-semibold mb-3 text-gray-900 dark:text-white">What file formats are supported?</h3>
+              <p class="text-base text-gray-600 dark:text-gray-300">CSV (.csv) and Excel (.xls, .xlsx). Multiple files can be uploaded at once.</p>
+            </div>
+            <div class="border-b border-white/10 dark:border-gray-700/50 pb-6">
+              <h3 class="text-xl font-semibold mb-3 text-gray-900 dark:text-white">How is the dirty score calculated?</h3>
+              <p class="text-base text-gray-600 dark:text-gray-300">Percentage of cells that are missing (including blanks) or duplicates (lower is better).</p>
+            </div>
+            <div class="border-b border-white/10 dark:border-gray-700/50 pb-6">
+              <h3 class="text-xl font-semibold mb-3 text-gray-900 dark:text-white">Is my data safe?</h3>
+              <p class="text-base text-gray-600 dark:text-gray-300">Yes — everything is processed in memory. No data is stored or sent anywhere.</p>
+            </div>
+            <div>
+              <h3 class="text-xl font-semibold mb-3 text-gray-900 dark:text-white">What cleaning happens automatically?</h3>
+              <p class="text-base text-gray-600 dark:text-gray-300">Missing values filled, text normalized (lowercase + strip), duplicates & outliers removed.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- About -->
+        <section id="about" class="glass rounded-3xl p-8 md:p-10 slide-in">
+          <h2 class="text-2xl md:text-3xl font-bold mb-8 text-gray-900 dark:text-white">About This Tool</h2>
+          <div class="space-y-6 text-base text-gray-600 dark:text-gray-300">
+            <p>Local-first CSV/Excel cleaning tool built with FastAPI + Pandas.</p>
+            <p>Key features:</p>
+            <ul class="list-disc pl-6 space-y-3">
+              <li>Multi-file upload & batch cleaning</li>
+              <li>Automatic suggestions & one-click auto-fill</li>
+              <li>Normalized dirty score + severity alerts</li>
+              <li>Detailed cleaning report in ZIP</li>
+              <li>Strong glassy UI with dark mode</li>
+            </ul>
+            <p class="pt-4">Designed for fast, private data preparation — perfect for analysts, students, and small teams.</p>
+            <p class="font-medium pt-4">Enjoy cleaning!</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
